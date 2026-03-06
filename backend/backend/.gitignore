@@ -1,0 +1,18 @@
+# Environment variables — NEVER commit these
+.env
+.env.local
+.env.production
+.env.staging
+
+# Node modules
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Build output
+dist/
+
+# OS
+.DS_Store

@@ -1,0 +1,91 @@
+{
+  "info": {
+    "name": "Tiles WMS - Vendors CRUD",
+    "description": "Full CRUD for Vendors. Set baseUrl (e.g. http://localhost:5000) and accessToken (JWT) in environment.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "accessToken", "value": "" },
+    { "key": "vendorId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Get All Vendors (paginated)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/vendors?page=1&limit=25&search=&sortBy=created_at&sortOrder=DESC",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "vendors"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "25" },
+            { "key": "search", "value": "" },
+            { "key": "sortBy", "value": "created_at" },
+            { "key": "sortOrder", "value": "DESC" },
+            { "key": "is_active", "value": "", "disabled": true }
+          ]
+        },
+        "description": "Returns paginated list. Optional: search (name/code), sortBy (name|code|created_at), sortOrder (ASC|DESC), is_active filter."
+      }
+    },
+    {
+      "name": "Get Vendor By ID",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": "{{baseUrl}}/api/v1/vendors/{{vendorId}}",
+        "description": "Replace {{vendorId}} with actual UUID from list response."
+      }
+    },
+    {
+      "name": "Create Vendor",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Acme Tiles Ltd\",\n  \"code\": \"VND-001\",\n  \"contact_person\": \"John Doe\",\n  \"phone\": \"9876543210\",\n  \"email\": \"john@acmetiles.com\",\n  \"address\": \"123 Industrial Area\",\n  \"gstin\": \"22AAAAA0000A1Z5\",\n  \"pan\": \"ABCDE1234F\",\n  \"payment_terms_days\": 30,\n  \"is_active\": true\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/vendors",
+        "description": "tenant_id is set from JWT; do not send in body."
+      }
+    },
+    {
+      "name": "Update Vendor",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Acme Tiles Ltd\",\n  \"payment_terms_days\": 45,\n  \"is_active\": true\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/vendors/{{vendorId}}",
+        "description": "Partial update; only send fields to change."
+      }
+    },
+    {
+      "name": "Delete Vendor (soft)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": "{{baseUrl}}/api/v1/vendors/{{vendorId}}",
+        "description": "Soft delete: sets is_active = 0. Returns 204 No Content."
+      }
+    }
+  ]
+}

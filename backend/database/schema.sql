@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS tenants (
 CREATE TABLE IF NOT EXISTS users (
   id            VARCHAR(36)  NOT NULL,
   tenant_id     VARCHAR(36)  NOT NULL,
+  warehouse_id  VARCHAR(36)  NULL,
   name          VARCHAR(255) NOT NULL,
   email         VARCHAR(255) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
@@ -37,10 +38,21 @@ CREATE TABLE IF NOT EXISTS users (
   last_login_at DATETIME     NULL,
   created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
   PRIMARY KEY (id),
+
   UNIQUE KEY uq_users_tenant_email (tenant_id, email),
+
   KEY idx_users_tenant (tenant_id),
-  CONSTRAINT fk_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+  KEY idx_users_warehouse (warehouse_id),
+
+  CONSTRAINT fk_users_tenant 
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+
+  CONSTRAINT fk_users_warehouse
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses(id)
+    ON DELETE SET NULL
+
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ─── REFRESH TOKENS ───────────────────────────────────────────────────────────

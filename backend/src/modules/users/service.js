@@ -44,10 +44,22 @@ const getById = async (id, tenantId) => {
 
 const create = async (tenantId, data) => {
   const existing = await repo.findByEmail(data.email, tenantId);
-  if (existing) throw new AppError('Email already exists in this tenant', 409, 'DUPLICATE_EMAIL');
 
-  const passwordHash = await bcrypt.hash(data.password, env.security.bcryptRounds);
+  if (existing) {
+    throw new AppError(
+      'Email already exists in this tenant',
+      409,
+      'DUPLICATE_EMAIL'
+    );
+  }
+
+  const passwordHash = await bcrypt.hash(
+    data.password,
+    env.security.bcryptRounds
+  );
+
   const id = uuidv4();
+
   await repo.create({
     id,
     tenant_id: tenantId,
@@ -56,35 +68,70 @@ const create = async (tenantId, data) => {
     password_hash: passwordHash,
     role: data.role,
     phone: data.phone || null,
+    warehouse_id: data.warehouse_id || null
   });
+
   return repo.findById(id, tenantId);
 };
 
 const update = async (id, tenantId, currentUserId, currentUserRole, data) => {
-  const user = await repo.findById(id, tenantId);
-  if (!user) throw new AppError('User not found', 404, 'NOT_FOUND');
 
+  const user = await repo.findById(id, tenantId);
+
+  if (!user) {
+    throw new AppError('User not found', 404, 'NOT_FOUND');
+  }
+
+  // Prevent lowering own role
   if (id === currentUserId) {
     if (data.role !== undefined && data.role !== user.role) {
+
       const currentIndex = ROLE_HIERARCHY.indexOf(currentUserRole);
       const newIndex = ROLE_HIERARCHY.indexOf(data.role);
+
       if (newIndex < currentIndex) {
-        throw new AppError('You cannot lower your own role', 400, 'CANNOT_LOWER_OWN_ROLE');
+        throw new AppError(
+          'You cannot lower your own role',
+          400,
+          'CANNOT_LOWER_OWN_ROLE'
+        );
       }
     }
   }
 
   const updateData = {};
+
   if (data.name !== undefined) updateData.name = data.name;
+
   if (data.role !== undefined) updateData.role = data.role;
+
   if (data.phone !== undefined) updateData.phone = data.phone;
-  if (data.is_active !== undefined) updateData.is_active = data.is_active ? 1 : 0;
-  if (data.password !== undefined && data.password !== null && String(data.password).trim() !== '') {
-    updateData.password_hash = await bcrypt.hash(data.password, env.security.bcryptRounds);
+
+  if (data.warehouse_id !== undefined) {
+    updateData.warehouse_id = data.warehouse_id || null;
   }
 
-  if (Object.keys(updateData).length === 0) return repo.findById(id, tenantId);
+  if (data.is_active !== undefined) {
+    updateData.is_active = data.is_active ? 1 : 0;
+  }
+
+  if (
+    data.password !== undefined &&
+    data.password !== null &&
+    String(data.password).trim() !== ''
+  ) {
+    updateData.password_hash = await bcrypt.hash(
+      data.password,
+      env.security.bcryptRounds
+    );
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    return repo.findById(id, tenantId);
+  }
+
   await repo.update(id, tenantId, updateData);
+
   return repo.findById(id, tenantId);
 };
 

@@ -10,6 +10,7 @@ const createUserSchema = Joi.object({
   password: Joi.string().min(6).required(),
   role: Joi.string().valid(...ROLES).required(),
   phone: Joi.string().max(20).allow(null, '').optional(),
+   warehouse_id: Joi.string().uuid().allow(null, '').optional(),
 });
 
 const updateUserSchema = Joi.object({
@@ -18,6 +19,7 @@ const updateUserSchema = Joi.object({
   role: Joi.string().valid(...ROLES).optional(),
   phone: Joi.string().max(20).allow(null, '').optional(),
   is_active: Joi.boolean().optional(),
+   warehouse_id: Joi.string().uuid().allow(null, '').optional(),
 }).min(1);
 
 // Allow role as string (e.g. "warehouse_manager,sales") or array (e.g. role[]=a&role[]=b); validated in service

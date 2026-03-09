@@ -2,7 +2,8 @@
 const { query } = require('../../config/db');
 const { parsePagination } = require('../../utils/pagination');
 
-const SELECT_COLUMNS = 'id, tenant_id, name, email, role, phone, is_active, last_login_at, created_at, updated_at';
+// const SELECT_COLUMNS = 'id, tenant_id, name, email, role, phone, is_active, last_login_at, created_at, updated_at';
+const SELECT_COLUMNS = 'id, tenant_id, name, email, role, phone, warehouse_id, is_active, last_login_at, created_at, updated_at';
 
 const findAll = async (tenantId, queryParams) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(
@@ -64,15 +65,15 @@ const findByEmail = async (email, tenantId) => {
 
 const create = async (data) => {
   await query(
-    `INSERT INTO users (id, tenant_id, name, email, password_hash, role, phone, is_active, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
-    [data.id, data.tenant_id, data.name, data.email, data.password_hash, data.role, data.phone || null]
+    `INSERT INTO users (id, tenant_id, name, email, password_hash, role, phone, warehouse_id, is_active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+    [data.id, data.tenant_id, data.name, data.email, data.password_hash, data.role, data.phone || null, data.warehouse_id || null]
   );
   return data.id;
 };
 
 const update = async (id, tenantId, data) => {
-  const allowed = ['name', 'role', 'phone', 'is_active', 'password_hash'];
+  const allowed = ['name', 'role', 'phone', 'warehouse_id', 'is_active', 'password_hash'];
   const setClause = [];
   const values = [];
   for (const key of allowed) {

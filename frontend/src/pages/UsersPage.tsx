@@ -1,43 +1,49 @@
-import { useState, useCallback, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useCallback, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   usersApi,
   type User,
   type CreateUserDto,
   type UpdateUserDto,
   ROLES,
-} from '@/api/usersApi';
-import { PageHeader } from '@/components/shared/PageHeader';
-import { DataTableShell } from '@/components/shared/DataTableShell';
-import { StatusBadge } from '@/components/shared/StatusBadge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from "@/api/usersApi";
+import { warehouseApi } from "@/api/warehouseApi";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { DataTableShell } from "@/components/shared/DataTableShell";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Pencil, Trash2, UserPlus } from 'lucide-react';
-import { toast } from 'sonner';
+} from "@/components/ui/select";
+import { Pencil, Trash2, UserPlus } from "lucide-react";
+import { toast } from "sonner";
 
 const roleLabels: Record<string, string> = {
-  super_admin: 'Super Admin',
-  admin: 'Admin',
-  warehouse_manager: 'Warehouse Manager',
-  sales: 'Sales',
-  accountant: 'Accountant',
-  user: 'User',
+  super_admin: "Super Admin",
+  admin: "Admin",
+  warehouse_manager: "Warehouse Manager",
+  sales: "Sales",
+  accountant: "Accountant",
+  user: "User",
 };
+
+interface WarehouseOption {
+  value: string;
+  label: string;
+}
 
 export default function UsersPage() {
   const qc = useQueryClient();
@@ -45,10 +51,11 @@ export default function UsersPage() {
   const [editing, setEditing] = useState<User | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<User | null>(null);
   const [page, setPage] = useState(1);
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<string>('');
-  const [activeFilter, setActiveFilter] = useState<string>('');
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("");
+  const [activeFilter, setActiveFilter] = useState<string>("");
+
   const applySearch = useCallback((value: string) => {
     setSearch(value);
     setPage(1);
@@ -59,70 +66,109 @@ export default function UsersPage() {
     limit: 25,
     search: search.trim() || undefined,
     role: roleFilter || undefined,
-    is_active: activeFilter === '' ? undefined : activeFilter === 'true',
-    sortBy: 'name',
-    sortOrder: 'ASC' as const,
+    is_active: activeFilter === "" ? undefined : activeFilter === "true",
+    sortBy: "name",
+    sortOrder: "ASC" as const,
   };
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['users', listParams],
+    queryKey: ["users", listParams],
     queryFn: () => usersApi.getAll(listParams),
   });
 
   const users: User[] = data?.data ?? [];
   const meta = data?.meta ?? null;
 
+  const { data: warehousesData } = useQuery({
+    queryKey: ["warehouses", { limit: 500 }],
+    queryFn: () => warehouseApi.getAll({ limit: 500 }),
+  });
+
+  const warehouseOptions: WarehouseOption[] =
+    warehousesData?.data?.map((w) => ({
+      value: w.id,
+      label: `${w.code} - ${w.name}`,
+    })) ?? [];
+
+  const getWarehouseLabel = (warehouseId: string | null | undefined) => {
+    if (!warehouseId) return "—";
+    return warehouseOptions.find((w) => w.value === warehouseId)?.label ?? "—";
+  };
+
   const createMutation = useMutation({
     mutationFn: (payload: CreateUserDto) => usersApi.create(payload),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['users'] });
+      qc.invalidateQueries({ queryKey: ["users"] });
       setCreateOpen(false);
-      toast.success('User created');
+      toast.success("User created");
     },
     onError: (e: { response?: { data?: { error?: { message?: string } } } }) =>
-      toast.error(e?.response?.data?.error?.message ?? 'Create failed'),
+      toast.error(e?.response?.data?.error?.message ?? "Create failed"),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: UpdateUserDto }) => usersApi.update(id, payload),
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateUserDto }) =>
+      usersApi.update(id, payload),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['users'] });
+      qc.invalidateQueries({ queryKey: ["users"] });
       setEditing(null);
-      toast.success('User updated');
+      toast.success("User updated");
     },
     onError: (e: { response?: { data?: { error?: { message?: string } } } }) =>
-      toast.error(e?.response?.data?.error?.message ?? 'Update failed'),
+      toast.error(e?.response?.data?.error?.message ?? "Update failed"),
   });
 
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => usersApi.deactivate(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['users'] });
+      qc.invalidateQueries({ queryKey: ["users"] });
       setDeactivateTarget(null);
-      toast.success('User deactivated');
+      toast.success("User deactivated");
     },
     onError: (e: { response?: { data?: { error?: { message?: string } } } }) =>
-      toast.error(e?.response?.data?.error?.message ?? 'Deactivate failed'),
+      toast.error(e?.response?.data?.error?.message ?? "Deactivate failed"),
   });
 
   const columns = [
-    { key: 'name', label: 'Name', render: (r: User) => r.name },
-    { key: 'email', label: 'Email', render: (r: User) => r.email },
-    { key: 'role', label: 'Role', render: (r: User) => roleLabels[r.role] ?? r.role },
-    { key: 'phone', label: 'Phone', render: (r: User) => r.phone ?? '—' },
+    { key: "name", label: "Name", render: (r: User) => r.name },
+    { key: "email", label: "Email", render: (r: User) => r.email },
     {
-      key: 'is_active',
-      label: 'Status',
+      key: "role",
+      label: "Role",
+      render: (r: User) => roleLabels[r.role] ?? r.role,
+    },
+    {
+      key: "warehouse",
+      label: "Warehouse",
       render: (r: User) => (
-        <StatusBadge status={r.is_active === true || r.is_active === 1 ? 'active' : 'inactive'} />
+        <span className="text-sm">
+          {getWarehouseLabel((r as User & { warehouse_id?: string }).warehouse_id)}
+        </span>
+      ),
+    },
+    { key: "phone", label: "Phone", render: (r: User) => r.phone ?? "—" },
+    {
+      key: "is_active",
+      label: "Status",
+      render: (r: User) => (
+        <StatusBadge
+          status={
+            r.is_active === true || r.is_active === 1 ? "active" : "inactive"
+          }
+        />
       ),
     },
     {
-      key: 'actions',
-      label: 'Actions',
+      key: "actions",
+      label: "Actions",
       render: (r: User) => (
         <div className="flex gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditing(r)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setEditing(r)}
+          >
             <Pencil className="h-4 w-4" />
           </Button>
           {(r.is_active === true || r.is_active === 1) && (
@@ -181,7 +227,7 @@ export default function UsersPage() {
 
       {isError && (
         <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {(error as Error)?.message ?? 'Failed to load users'}
+          {(error as Error)?.message ?? "Failed to load users"}
         </div>
       )}
 
@@ -212,6 +258,7 @@ export default function UsersPage() {
         onClose={() => setCreateOpen(false)}
         onSubmit={(payload) => createMutation.mutate(payload)}
         loading={createMutation.isPending}
+        warehouseOptions={warehouseOptions}
       />
 
       {/* Edit modal */}
@@ -219,19 +266,26 @@ export default function UsersPage() {
         user={editing}
         open={!!editing}
         onClose={() => setEditing(null)}
-        onSubmit={(payload) => editing && updateMutation.mutate({ id: editing.id, payload })}
+        onSubmit={(payload) =>
+          editing && updateMutation.mutate({ id: editing.id, payload })
+        }
         loading={updateMutation.isPending}
+        warehouseOptions={warehouseOptions}
       />
 
       {/* Deactivate confirm */}
-      <Dialog open={!!deactivateTarget} onOpenChange={(open) => !open && setDeactivateTarget(null)}>
+      <Dialog
+        open={!!deactivateTarget}
+        onOpenChange={(open) => !open && setDeactivateTarget(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Deactivate user</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Deactivate <strong>{deactivateTarget?.name}</strong>? They will no longer be able to sign in. You can
-            reactivate by editing the user later.
+            Deactivate <strong>{deactivateTarget?.name}</strong>? They will no
+            longer be able to sign in. You can reactivate by editing the user
+            later.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeactivateTarget(null)}>
@@ -239,10 +293,13 @@ export default function UsersPage() {
             </Button>
             <Button
               variant="destructive"
-              onClick={() => deactivateTarget && deactivateMutation.mutate(deactivateTarget.id)}
+              onClick={() =>
+                deactivateTarget &&
+                deactivateMutation.mutate(deactivateTarget.id)
+              }
               disabled={deactivateMutation.isPending}
             >
-              {deactivateMutation.isPending ? 'Deactivating...' : 'Deactivate'}
+              {deactivateMutation.isPending ? "Deactivating..." : "Deactivate"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -251,35 +308,52 @@ export default function UsersPage() {
   );
 }
 
+// ─── Create Dialog ─────────────────────────────────────────────────────────────
+
 function CreateUserDialog({
   open,
   onClose,
   onSubmit,
   loading,
+  warehouseOptions,
 }: {
   open: boolean;
   onClose: () => void;
   onSubmit: (payload: CreateUserDto) => void;
   loading: boolean;
+  warehouseOptions: WarehouseOption[];
 }) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState<User['role']>('user');
-  const [phone, setPhone] = useState('');
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<User["role"]>("user");
+  const [phone, setPhone] = useState("");
+  const [warehouseId, setWarehouseId] = useState<string>("");
+
+  const reset = () => {
+    setName("");
+    setEmail("");
+    setPassword("");
+    setRole("user");
+    setPhone("");
+    setWarehouseId("");
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ name, email, password, role, phone: phone.trim() || null });
-    setName('');
-    setEmail('');
-    setPassword('');
-    setRole('user');
-    setPhone('');
+    onSubmit({
+      name,
+      email,
+      password,
+      role,
+      phone: phone.trim() || null,
+      warehouse_id: warehouseId || null,
+    } as CreateUserDto & { warehouse_id: string | null });
+    reset();
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onClose(); } }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -322,7 +396,10 @@ function CreateUserDialog({
           </div>
           <div className="space-y-2">
             <Label>Role</Label>
-            <Select value={role} onValueChange={(v) => setRole(v as User['role'])}>
+            <Select
+              value={role}
+              onValueChange={(v) => setRole(v as User["role"])}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -330,6 +407,25 @@ function CreateUserDialog({
                 {ROLES.map((r) => (
                   <SelectItem key={r} value={r}>
                     {roleLabels[r]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Warehouse (optional)</Label>
+            <Select
+              value={warehouseId}
+              onValueChange={(v) => setWarehouseId(v === "__none__" ? "" : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="No warehouse assigned" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">No warehouse</SelectItem>
+                {warehouseOptions.map((w) => (
+                  <SelectItem key={w.value} value={w.value}>
+                    {w.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -345,11 +441,11 @@ function CreateUserDialog({
             />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => { reset(); onClose(); }}>
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Creating...' : 'Create'}
+              {loading ? "Creating..." : "Create"}
             </Button>
           </DialogFooter>
         </form>
@@ -358,52 +454,70 @@ function CreateUserDialog({
   );
 }
 
+// ─── Edit Dialog ───────────────────────────────────────────────────────────────
+
 function EditUserDialog({
   user,
   open,
   onClose,
   onSubmit,
   loading,
+  warehouseOptions,
 }: {
   user: User | null;
   open: boolean;
   onClose: () => void;
   onSubmit: (payload: UpdateUserDto) => void;
   loading: boolean;
+  warehouseOptions: WarehouseOption[];
 }) {
-  const [name, setName] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState<User['role']>('user');
-  const [phone, setPhone] = useState('');
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<User["role"]>("user");
+  const [phone, setPhone] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [warehouseId, setWarehouseId] = useState<string>("");
 
   useEffect(() => {
     if (user && open) {
       setName(user.name);
-      setPassword('');
-      setPhone(user.phone ?? '');
+      setPassword("");
+      setPhone(user.phone ?? "");
       setRole(user.role);
       setIsActive(user.is_active === true || user.is_active === 1);
+      setWarehouseId(
+        (user as User & { warehouse_id?: string }).warehouse_id ?? ""
+      );
     }
   }, [user, open]);
 
+  const reset = () => {
+    setName("");
+    setPassword("");
+    setPhone("");
+    setRole("user");
+    setIsActive(true);
+    setWarehouseId("");
+  };
+
   const handleOpenChange = (v: boolean) => {
     if (!v) {
-      setName('');
-      setPassword('');
-      setPhone('');
-      setRole('user');
-      setIsActive(true);
+      reset();
       onClose();
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload: UpdateUserDto = { name, role, phone: phone.trim() || null, is_active: isActive };
+    const payload: UpdateUserDto & { warehouse_id?: string | null } = {
+      name,
+      role,
+      phone: phone.trim() || null,
+      is_active: isActive,
+      warehouse_id: warehouseId || null,
+    };
     if (password.trim()) payload.password = password.trim();
     onSubmit(payload);
-    setPassword('');
     handleOpenChange(false);
   };
 
@@ -428,7 +542,9 @@ function EditUserDialog({
           </div>
           <p className="text-xs text-muted-foreground">Email: {user.email}</p>
           <div className="space-y-2">
-            <Label htmlFor="edit-password">New password (leave blank to keep)</Label>
+            <Label htmlFor="edit-password">
+              New password (leave blank to keep)
+            </Label>
             <Input
               id="edit-password"
               type="password"
@@ -440,7 +556,10 @@ function EditUserDialog({
           </div>
           <div className="space-y-2">
             <Label>Role</Label>
-            <Select value={role} onValueChange={(v) => setRole(v as User['role'])}>
+            <Select
+              value={role}
+              onValueChange={(v) => setRole(v as User["role"])}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -448,6 +567,25 @@ function EditUserDialog({
                 {ROLES.map((r) => (
                   <SelectItem key={r} value={r}>
                     {roleLabels[r]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Warehouse</Label>
+            <Select
+              value={warehouseId || "__none__"}
+              onValueChange={(v) => setWarehouseId(v === "__none__" ? "" : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="No warehouse assigned" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">No warehouse</SelectItem>
+                {warehouseOptions.map((w) => (
+                  <SelectItem key={w.value} value={w.value}>
+                    {w.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -475,11 +613,15 @@ function EditUserDialog({
             </Label>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : 'Save'}
+              {loading ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </form>

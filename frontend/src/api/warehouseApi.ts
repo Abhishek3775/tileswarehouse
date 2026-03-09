@@ -38,6 +38,7 @@ export const warehouseApi = {
 export const rackApi = {
   getAll: async (params?: PaginationParams & { warehouse_id?: string }): Promise<ApiPaginatedResponse<Rack>> => {
     const res = await api.get<ApiPaginatedResponse<Rack>>('/racks', { params });
+    console.log(res.data)
     return res.data;
   },
   getById: async (id: string): Promise<Rack> => {

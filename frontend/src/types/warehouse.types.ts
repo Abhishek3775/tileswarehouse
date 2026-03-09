@@ -28,28 +28,79 @@ export interface UpdateWarehouseDto extends Partial<CreateWarehouseDto> {
 
 // ─── Rack Types ───────────────────────────────────────────────────────────────
 
+// ─── Rack Types ───────────────────────────────────────────────────────────────
+
+export type RackType = 'PALLET' | 'SHELF' | 'FLOOR';
+
+export type RackStatus =
+  | 'ACTIVE'
+  | 'BLOCKED'
+  | 'MAINTENANCE'
+  | 'FULL';
+
 export interface Rack {
   id: string;
   tenant_id: string;
   warehouse_id: string;
+
+  zone?: string | null;
+
   name: string;
+
   aisle?: string | null;
   row?: string | null;
   level?: string | null;
+
+  rack_type?: RackType;
+
   capacity_boxes?: number | null;
+  occupied_boxes?: number | null;
+  available_boxes?: number | null;
+
+  max_weight?: number | null;
+
+  rack_status?: RackStatus;
+
   qr_code?: string | null;
+
+  notes?: string | null;
+
+  created_by?: string | null;
+
   is_active: boolean;
+
   created_at: string;
+  updated_at?: string | null;
 }
 
 export interface CreateRackDto {
   warehouse_id: string;
+
+  zone?: string | null;
+
   name: string;
+
   aisle?: string | null;
   row?: string | null;
   level?: string | null;
+
+  rack_type?: RackType;
+
   capacity_boxes?: number | null;
+  occupied_boxes?: number;
+
+  available_boxes?: number | null;
+
+  max_weight?: number | null;
+
+  rack_status?: RackStatus;
+
   qr_code?: string | null;
+
+  notes?: string | null;
+
+  created_by?: string;
+  is_active?: boolean;
 }
 
 export interface UpdateRackDto extends Partial<CreateRackDto> {

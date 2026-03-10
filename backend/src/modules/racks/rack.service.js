@@ -261,6 +261,15 @@ const assignProductToRack = async (tenantId, data) => {
     throw new Error(`Rack capacity exceeded. Only ${available} boxes available.`);
   }
 
+  // Use UPSERT
+  const sql = `
+    INSERT INTO product_racks (id, tenant_id, product_id, rack_id, boxes_stored)
+    VALUES (?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+    boxes_stored = ?,
+    updated_at = NOW()
+  `;
+
   await query(sql, [id, tenantId, data.product_id, data.rack_id, data.boxes_stored, data.boxes_stored]);
 
   // 3. Sync the 'racks' table columns

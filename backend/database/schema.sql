@@ -111,74 +111,35 @@ CREATE TABLE IF NOT EXISTS warehouses (
 -- ─── RACKS ────────────────────────────────────────────────────────────────────
 CREATE TABLE racks (
   id VARCHAR(36) NOT NULL,
-
   tenant_id VARCHAR(36) NOT NULL,
   warehouse_id VARCHAR(36) NOT NULL,
-
   zone VARCHAR(50) DEFAULT NULL,
   name VARCHAR(100) NOT NULL,
-
   aisle VARCHAR(50) DEFAULT NULL,
   `row` VARCHAR(50) DEFAULT NULL,
   level VARCHAR(50) DEFAULT NULL,
-
   rack_type ENUM('PALLET','SHELF','FLOOR') DEFAULT 'PALLET',
-
   capacity_boxes INT DEFAULT NULL,
   occupied_boxes INT DEFAULT 0,
   available_boxes INT DEFAULT NULL,
-
   max_weight DECIMAL(10,2) DEFAULT NULL,
-
   rack_status ENUM('ACTIVE','BLOCKED','MAINTENANCE','FULL') DEFAULT 'ACTIVE',
-
   qr_code VARCHAR(255) DEFAULT NULL,
-
   notes TEXT DEFAULT NULL,
-
   is_active TINYINT(1) NOT NULL DEFAULT 1,
-
   created_by VARCHAR(36) DEFAULT NULL,
-
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
-
   PRIMARY KEY (id),
-
-  -- Prevent duplicate rack names in same warehouse
   UNIQUE KEY unique_rack_per_warehouse (warehouse_id, name),
-
-  -- Indexes
   KEY idx_racks_tenant (tenant_id),
   KEY idx_racks_warehouse (warehouse_id),
   KEY idx_racks_created_by (created_by),
-
-  -- Foreign Keys
-  CONSTRAINT fk_racks_tenant
-    FOREIGN KEY (tenant_id)
-    REFERENCES tenants(id)
-    ON DELETE CASCADE
-    ON UPDATE CASCADE,
-
-  CONSTRAINT fk_racks_warehouse
-    FOREIGN KEY (warehouse_id)
-    REFERENCES warehouses(id)
-    ON DELETE CASCADE
-    ON UPDATE CASCADE,
-
-  CONSTRAINT fk_racks_created_by
-    FOREIGN KEY (created_by)
-    REFERENCES users(id)
-    ON DELETE SET NULL
-    ON UPDATE CASCADE,
-
-  -- Ensure occupied <= capacity
-  CONSTRAINT chk_rack_capacity
-    CHECK (occupied_boxes <= capacity_boxes)
-
-) ENGINE=InnoDB
-DEFAULT CHARSET=utf8mb4
-COLLATE=utf8mb4_unicode_ci;
+  CONSTRAINT fk_racks_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_racks_warehouse FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_racks_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT chk_rack_capacity CHECK (occupied_boxes <= capacity_boxes)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ─── VENDORS ──────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS vendors (
@@ -271,6 +232,24 @@ CREATE TABLE IF NOT EXISTS products (
   CONSTRAINT fk_product_tenant   FOREIGN KEY (tenant_id)   REFERENCES tenants(id),
   CONSTRAINT fk_product_category FOREIGN KEY (category_id) REFERENCES product_categories(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ─── PRODUCT RACKS (Mapping products to rack locations) ───────────────────────
+CREATE TABLE IF NOT EXISTS product_racks (
+  id              VARCHAR(36) NOT NULL,
+  tenant_id       VARCHAR(36) NOT NULL,
+  product_id      VARCHAR(36) NOT NULL,
+  rack_id         VARCHAR(36) NOT NULL,
+  boxes_stored    INT         NOT NULL DEFAULT 0,
+  created_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_product_rack (product_id, rack_id),
+  KEY idx_pr_tenant (tenant_id),
+  CONSTRAINT fk_pr_tenant  FOREIGN KEY (tenant_id)  REFERENCES tenants(id),
+  CONSTRAINT fk_pr_product FOREIGN KEY (product_id) REFERENCES products(id),
+  CONSTRAINT fk_pr_rack    FOREIGN KEY (rack_id)    REFERENCES racks(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 
 -- ─── SHADES ───────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS shades (

@@ -28,30 +28,30 @@ const create = async (tenantId, userId, data) => {
       tenantId,
       grnNumber,
       purchaseOrderId: data.purchaseOrderId,
-      vendorId:        data.vendorId,
-      warehouseId:     data.warehouseId,
-      receiptDate:     data.receiptDate,
-      invoiceNumber:   data.invoiceNumber,
-      invoiceDate:     data.invoiceDate,
-      vehicleNumber:   data.vehicleNumber,
-      notes:           data.notes,
-      createdBy:       userId,
+      vendorId: data.vendorId,
+      warehouseId: data.warehouseId,
+      receiptDate: data.receiptDate,
+      invoiceNumber: data.invoiceNumber,
+      invoiceDate: data.invoiceDate,
+      vehicleNumber: data.vehicleNumber,
+      notes: data.notes,
+      createdBy: userId,
     });
 
     for (const item of data.items || []) {
       await repo.createGRNItem(trx, {
         tenantId,
         grnId,
-        product_id:      item.product_id,
-        shade_id:        item.shade_id        || null,
-        batch_id:        item.batch_id        || null,
-        rack_id:         item.rack_id         || null,
-        received_boxes:  item.received_boxes  ?? 0,
+        product_id: item.product_id,
+        shade_id: item.shade_id || null,
+        batch_id: item.batch_id || null,
+        rack_id: item.rack_id || null,
+        received_boxes: item.received_boxes ?? 0,
         received_pieces: item.received_pieces ?? 0,
-        damaged_boxes:   item.damaged_boxes   ?? 0,
-        unit_price:      item.unit_price      ?? 0,
-        quality_status:  item.quality_status  || 'pending',
-        quality_notes:   item.quality_notes   || null,
+        damaged_boxes: item.damaged_boxes ?? 0,
+        unit_price: item.unit_price ?? 0,
+        quality_status: item.quality_status || 'pending',
+        quality_notes: item.quality_notes || null,
       });
     }
 
@@ -75,14 +75,14 @@ const postGRN = async (id, tenantId, userId) => {
   const trx = await beginTransaction();
   try {
     for (const item of grn.items) {
-      const received = parseFloat(item.received_boxes)   || 0;
-      const damaged  = parseFloat(item.damaged_boxes)    || 0;
+      const received = parseFloat(item.received_boxes) || 0;
+      const damaged = parseFloat(item.damaged_boxes) || 0;
 
       // FIX BUG-4: clamp to 0 — damaged_boxes should never exceed received_boxes,
       // but if bad data exists we must not post negative stock.
       const netBoxes = Math.max(0, received - damaged);
 
-      if (netBoxes > 0) {
+      if (netBoxes > 0 && item.quality_status === 'pass') {
         const productRows = await trx.query(
           'SELECT sqft_per_box FROM products WHERE id = ? AND tenant_id = ?',
           [item.product_id, tenantId]
@@ -93,19 +93,19 @@ const postGRN = async (id, tenantId, userId) => {
 
         await postStockMovement(trx, {
           tenantId,
-          warehouseId:     grn.warehouse_id,
-          rackId:          item.rack_id,
-          productId:       item.product_id,
-          shadeId:         item.shade_id,
-          batchId:         item.batch_id,
+          warehouseId: grn.warehouse_id,
+          rackId: item.rack_id,
+          productId: item.product_id,
+          shadeId: item.shade_id,
+          batchId: item.batch_id,
           transactionType: 'grn',
-          referenceId:     id,
-          referenceType:   'grn',
-          boxesIn:         netBoxes,
-          piecesIn:        parseFloat(item.received_pieces || 0),
+          referenceId: id,
+          referenceType: 'grn',
+          boxesIn: netBoxes,
+          piecesIn: parseFloat(item.received_pieces || 0),
           sqftPerBox,
-          notes:           `GRN Posted: ${grn.grn_number}`,
-          createdBy:       userId,
+          notes: `GRN Posted: ${grn.grn_number}`,
+          createdBy: userId,
         });
       }
     }
@@ -158,13 +158,13 @@ const update = async (id, tenantId, data) => {
   }
   const payload = {};
   const map = {
-    receipt_date:   data.receipt_date   ?? data.receiptDate,
+    receipt_date: data.receipt_date ?? data.receiptDate,
     invoice_number: data.invoice_number ?? data.invoiceNumber,
-    invoice_date:   data.invoice_date   ?? data.invoiceDate,
+    invoice_date: data.invoice_date ?? data.invoiceDate,
     vehicle_number: data.vehicle_number ?? data.vehicleNumber,
-    notes:          data.notes,
-    vendor_id:      data.vendor_id      ?? data.vendorId,
-    warehouse_id:   data.warehouse_id   ?? data.warehouseId,
+    notes: data.notes,
+    vendor_id: data.vendor_id ?? data.vendorId,
+    warehouse_id: data.warehouse_id ?? data.warehouseId,
   };
   for (const [k, v] of Object.entries(map)) {
     if (v !== undefined) payload[k] = v;
@@ -179,18 +179,65 @@ const addItem = async (id, tenantId, data) => {
     throw new AppError(`Cannot add items to GRN in status: ${grn.status}`, 400, 'INVALID_STATUS');
   }
   await repo.addGRNItem(tenantId, id, {
-    product_id:      data.product_id,
-    shade_id:        data.shade_id        ?? null,
-    batch_id:        data.batch_id        ?? null,
-    rack_id:         data.rack_id         ?? null,
-    received_boxes:  data.received_boxes  ?? 0,
+    product_id: data.product_id,
+    shade_id: data.shade_id ?? null,
+    batch_id: data.batch_id ?? null,
+    rack_id: data.rack_id ?? null,
+    received_boxes: data.received_boxes ?? 0,
     received_pieces: data.received_pieces ?? 0,
-    damaged_boxes:   data.damaged_boxes   ?? 0,
-    unit_price:      data.unit_price      ?? 0,
-    quality_status:  data.quality_status  ?? 'pending',
-    quality_notes:   data.quality_notes   ?? null,
+    damaged_boxes: data.damaged_boxes ?? 0,
+    unit_price: data.unit_price ?? 0,
+    quality_status: data.quality_status ?? 'pending',
+    quality_notes: data.quality_notes ?? null,
   });
   return getById(id, tenantId);
+};
+
+const updateItem = async (id, tenantId, itemId, data) => {
+  const grn = await getById(id, tenantId);
+  if (grn.status !== 'draft' && grn.status !== 'verified') {
+    throw new AppError(`Cannot update items of GRN in status: ${grn.status}`, 400, 'INVALID_STATUS');
+  }
+  const payload = {};
+  const map = {
+    product_id: data.product_id,
+    shade_id: data.shade_id,
+    batch_id: data.batch_id,
+    batch_number: data.batch_number,
+    rack_id: data.rack_id,
+    received_boxes: data.received_boxes,
+    received_pieces: data.received_pieces,
+    damaged_boxes: data.damaged_boxes,
+    unit_price: data.unit_price,
+    quality_status: data.quality_status,
+    quality_notes: data.quality_notes,
+  };
+
+  for (const [k, v] of Object.entries(map)) {
+    if (v !== undefined) payload[k] = v;
+  }
+
+  if (Object.keys(payload).length > 0) {
+    await repo.updateGRNItem(tenantId, id, itemId, payload);
+  }
+  return getById(id, tenantId);
+};
+
+const deleteItem = async (id, tenantId, itemId) => {
+  const grn = await getById(id, tenantId);
+  if (grn.status !== 'draft') {
+    throw new AppError('Only draft GRNs can have items deleted', 400, 'INVALID_STATUS');
+  }
+  await repo.removeGRNItem(tenantId, id, itemId);
+  return getById(id, tenantId);
+};
+
+const generateLabels = async (id, tenantId, itemId) => {
+  const grn = await getById(id, tenantId);
+  const item = grn.items.find((i) => i.id === itemId);
+  if (!item) throw new AppError('GRN item not found', 404, 'NOT_FOUND');
+  await repo.markBarcodePrinted(tenantId, id, itemId);
+  return { success: true, item };
 };
 
 const remove = async (id, tenantId) => {
@@ -203,4 +250,4 @@ const remove = async (id, tenantId) => {
   return { id, deleted: true };
 };
 
-module.exports = { getAll, getById, create, update, addItem, remove, postGRN, updateQuality };
+module.exports = { getAll, getById, create, update, addItem, updateItem, deleteItem, generateLabels, remove, postGRN, updateQuality };

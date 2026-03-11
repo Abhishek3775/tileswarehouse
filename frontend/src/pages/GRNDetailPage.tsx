@@ -1,8 +1,9 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { grnApi } from '@/api/grnApi';
 import { productApi } from '@/api/productApi';
+import { rackApi } from '@/api/warehouseApi';
 import type { GRN, GRNItem, UpdateQualityDto } from '@/types/grn.types';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -32,40 +33,43 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   ArrowLeft, Loader2, ExternalLink, Package,
-  Trash2, Plus, ChevronsUpDown, Check, MessageSquare,
+  Trash2, Plus, ChevronsUpDown, Check, MessageSquare, Pencil, Printer,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Product { id: string; name: string; code: string }
-interface Shade   { id: string; shade_code: string; shade_name: string }
+interface Shade { id: string; shade_code: string; shade_name: string }
 
 type GRNFull = GRN & {
   purchase_order_id?: string;
-  po_number?:         string;
-  invoice_date?:      string;
-  vehicle_number?:    string;
-  notes?:             string;
-  items?:             GRNItemFull[];
+  po_number?: string;
+  invoice_date?: string;
+  vehicle_number?: string;
+  notes?: string;
+  items?: GRNItemFull[];
 };
 
 type GRNItemFull = GRNItem & {
-  shade_name?:    string;
-  shade_code?:    string;
+  shade_name?: string;
+  shade_code?: string;
   ordered_boxes?: number;
-  product_code?:  string;
+  product_code?: string;
   received_pieces?: number;
-  damaged_boxes?:   number;
-  unit_price?:      number;
-  rack_name?:       string;
-  batch_number?:    string;
+  damaged_boxes?: number;
+  unit_price?: number;
+  rack_name?: string;
+  batch_number?: string;
+  received_boxes?: number;
+  received_qty_boxes?: number;
+  rack_id?: string;
 };
 
 const qualityOptions = [
   { value: 'pending', label: 'Pending' },
-  { value: 'pass',    label: 'Pass'    },
-  { value: 'fail',    label: 'Fail'    },
+  { value: 'pass', label: 'Pass' },
+  { value: 'fail', label: 'Fail' },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -90,13 +94,13 @@ function ProductCombobox({
   onChange: (id: string, label: string) => void;
   disabled?: boolean;
 }) {
-  const [open,  setOpen]  = useState(false);
+  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
 
   const { data } = useQuery({
     queryKey: ['products-search', query],
-    queryFn:  () => productApi.getAll({ search: query, limit: 30, sortBy: 'name', sortOrder: 'ASC' }),
-    enabled:  open,
+    queryFn: () => productApi.getAll({ search: query, limit: 30, sortBy: 'name', sortOrder: 'ASC' }),
+    enabled: open,
   });
   const products: Product[] = data?.data ?? [];
 
@@ -151,15 +155,15 @@ function ShadeSelect({
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ['shades-for-product', productId],
-    queryFn:  () => productApi.getShades(productId),
-    enabled:  !!productId,
+    queryFn: () => productApi.getShades(productId),
+    enabled: !!productId,
   });
   const shades: Shade[] = data?.data ?? [];
 
   const placeholder = !productId ? 'Select product first'
     : isLoading ? 'Loading…'
-    : shades.length === 0 ? 'No shades'
-    : 'Select shade (optional)';
+      : shades.length === 0 ? 'No shades'
+        : 'Select shade (optional)';
 
   return (
     <Select
@@ -214,14 +218,14 @@ function QualityNotesDialog({
 }
 
 // ─── Add Item Panel ───────────────────────────────────────────────────────────
-function AddItemPanel({ grnId, onSuccess }: { grnId: string; onSuccess: () => void }) {
-  const [productId,      setProductId]      = useState('');
-  const [productLabel,   setProductLabel]   = useState('');
-  const [shadeId,        setShadeId]        = useState('');
-  const [receivedBoxes,  setReceivedBoxes]  = useState('');
+function AddItemPanel({ grnId, onSuccess, existingItems }: { grnId: string; onSuccess: () => void; existingItems: GRNItemFull[] }) {
+  const [productId, setProductId] = useState('');
+  const [productLabel, setProductLabel] = useState('');
+  const [shadeId, setShadeId] = useState('');
+  const [receivedBoxes, setReceivedBoxes] = useState('');
   const [receivedPieces, setReceivedPieces] = useState('0');
-  const [damagedBoxes,   setDamagedBoxes]   = useState('0');
-  const [unitPrice,      setUnitPrice]      = useState('');
+  const [damagedBoxes, setDamagedBoxes] = useState('0');
+  const [unitPrice, setUnitPrice] = useState('');
 
   const addItemMutation = useMutation({
     mutationFn: (data: Parameters<typeof grnApi.addItem>[1]) => grnApi.addItem(grnId, data),
@@ -238,20 +242,20 @@ function AddItemPanel({ grnId, onSuccess }: { grnId: string; onSuccess: () => vo
   });
 
   const handleAdd = () => {
-    const boxes   = parseFloat(receivedBoxes)  || 0;
-    const damaged = parseFloat(damagedBoxes)   || 0;
-    const price   = parseFloat(unitPrice)      ?? 0;
-    if (!productId)    { toast.error('Select a product');            return; }
-    if (boxes <= 0)    { toast.error('Received boxes must be > 0'); return; }
+    const boxes = parseFloat(receivedBoxes) || 0;
+    const damaged = parseFloat(damagedBoxes) || 0;
+    const price = parseFloat(unitPrice) ?? 0;
+    if (!productId) { toast.error('Select a product'); return; }
+    if (boxes <= 0) { toast.error('Received boxes must be > 0'); return; }
     if (damaged > boxes) { toast.error('Damaged boxes cannot exceed received boxes'); return; }
 
     addItemMutation.mutate({
-      product_id:      productId,
-      shade_id:        shadeId || null,
-      received_boxes:  boxes,
+      product_id: productId,
+      shade_id: shadeId || null,
+      received_boxes: boxes,
       received_pieces: parseFloat(receivedPieces) || 0,
-      damaged_boxes:   damaged,
-      unit_price:      price,
+      damaged_boxes: damaged,
+      unit_price: price,
     });
   };
 
@@ -336,6 +340,175 @@ function AddItemPanel({ grnId, onSuccess }: { grnId: string; onSuccess: () => vo
   );
 }
 
+// ─── Post Stock Preview Dialog ──────────────────────────────────────────────────
+function PostPreviewDialog({
+  grnItems, open, onClose, onConfirm, loading
+}: {
+  grnItems: GRNItemFull[]; open: boolean; onClose: () => void;
+  onConfirm: () => void; loading: boolean;
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <AlertDialogContent className="max-w-md">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Stock Impact Preview</AlertDialogTitle>
+          <AlertDialogDescription>
+            The following inventory changes will be applied:
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="max-h-[300px] overflow-y-auto space-y-2 py-2">
+          {grnItems.map(it => {
+            const rcvd = (it as any).received_boxes ?? (it as any).received_qty_boxes ?? 0;
+            const netBoxes = Math.max(0, Number(rcvd) - Number(it.damaged_boxes ?? 0));
+            if (netBoxes === 0) return null;
+            return (
+              <div key={it.id} className="flex justify-between items-center text-sm border-b pb-1 last:border-0 hover:bg-muted/10">
+                <div className="flex flex-col">
+                  <span className="font-semibold">{it.product_name}</span>
+                  <span className="text-xs text-muted-foreground">{it.shade_name ? `Shade: ${it.shade_name}` : ''} {it.batch_number ? `Batch: ${it.batch_number}` : ''} {it.rack_name ? `Rack: ${it.rack_name}` : ''}</span>
+                </div>
+                <span className="font-bold text-green-600">+{netBoxes} boxes</span>
+              </div>
+            );
+          })}
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm} disabled={loading}>
+            {loading ? 'Posting…' : 'Confirm & Post'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+// ─── Edit Item Dialog ─────────────────────────────────────────────────────────
+function EditItemDialog({
+  grnId, item, open, onClose, onSuccess, warehouseId
+}: {
+  grnId: string; item: GRNItemFull | null; open: boolean;
+  onClose: () => void; onSuccess: () => void; warehouseId: string;
+}) {
+  const [receivedBoxes, setReceivedBoxes] = useState('');
+  const [receivedPieces, setReceivedPieces] = useState('');
+  const [damagedBoxes, setDamagedBoxes] = useState('');
+  const [unitPrice, setUnitPrice] = useState('');
+  const [rackId, setRackId] = useState('');
+  const [batchNumber, setBatchNumber] = useState('');
+
+  const { data: rackData } = useQuery({
+    queryKey: ['racks', warehouseId],
+    queryFn: () => rackApi.getAll({ warehouse_id: warehouseId, limit: 100 }),
+    enabled: open && !!warehouseId,
+  });
+  const racks = rackData?.data ?? [];
+
+  useEffect(() => {
+    if (item && open) {
+      const rcvd = (item as any).received_boxes ?? (item as any).received_qty_boxes ?? '';
+      setReceivedBoxes(String(rcvd));
+      setReceivedPieces(String(item.received_pieces ?? '0'));
+      setDamagedBoxes(String(item.damaged_boxes ?? '0'));
+      setUnitPrice(String(item.unit_price ?? ''));
+      setRackId(item.rack_id ?? '');
+      setBatchNumber(item.batch_number ?? '');
+    }
+  }, [item, open]);
+
+  const updateMutation = useMutation({
+    mutationFn: (data: any) => grnApi.updateItem(grnId, item!.id!, data),
+    onSuccess: () => {
+      onSuccess();
+      toast.success('Item updated');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.error?.message ?? 'Update failed'),
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!item) return;
+    const boxes = parseFloat(receivedBoxes) || 0;
+    const damaged = parseFloat(damagedBoxes) || 0;
+    if (damaged > boxes) { toast.error("Damaged boxes cannot exceed received boxes"); return; }
+
+    if (rackId && rackId !== '__none__') {
+      const r = racks.find((ra: any) => ra.id === rackId);
+      if (r) {
+        const avail = (r.capacity_boxes || 0) - (r.occupied_boxes || 0);
+        if (boxes > avail) {
+          toast.error(`Rack capacity exceeded. Only ${Math.max(0, avail)} boxes available.`);
+          return;
+        }
+      }
+    }
+
+    updateMutation.mutate({
+      received_boxes: boxes,
+      received_pieces: parseFloat(receivedPieces) || 0,
+      damaged_boxes: damaged,
+      unit_price: parseFloat(unitPrice) || 0,
+      rack_id: rackId === '__none__' ? null : rackId || null,
+      batch_number: batchNumber || null,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit Item</DialogTitle>
+          <DialogDescription>{item?.product_name}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Received Boxes</Label>
+              <Input type="number" step="0.01" value={receivedBoxes} onChange={e => setReceivedBoxes(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label>Damaged Boxes</Label>
+              <Input type="number" step="0.01" value={damagedBoxes} onChange={e => setDamagedBoxes(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Received Pieces</Label>
+              <Input type="number" step="0.01" value={receivedPieces} onChange={e => setReceivedPieces(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Unit Price (₹)</Label>
+              <Input type="number" step="0.01" value={unitPrice} onChange={e => setUnitPrice(e.target.value)} required />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Rack</Label>
+              <Select value={rackId || '__none__'} onValueChange={setRackId}>
+                <SelectTrigger><SelectValue placeholder="Select Rack" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— No Rack —</SelectItem>
+                  {racks.map((r: any) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.rack_name} (Avail: {Math.max(0, (r.capacity_boxes || 0) - (r.occupied_boxes || 0))})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Batch Number</Label>
+              <Input value={batchNumber} onChange={e => setBatchNumber(e.target.value)} placeholder="e.g. BATCH-01" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={updateMutation.isPending}>Cancel</Button>
+            <Button type="submit" disabled={updateMutation.isPending}>{updateMutation.isPending ? 'Saving...' : 'Save Changes'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Main Page
 // ═════════════════════════════════════════════════════════════════════════════
@@ -351,12 +524,15 @@ export default function GRNDetailPage() {
   const [pendingQualityStatus, setPendingQualityStatus] = useState<string>('');
 
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [postPreviewOpen, setPostPreviewOpen] = useState(false);
+  const [editItemObj, setEditItemObj] = useState<GRNItemFull | null>(null);
+  const [deleteItemObj, setDeleteItemObj] = useState<GRNItemFull | null>(null);
 
   // ─── Queries ──────────────────────────────────────────────────────────────
   const { data: grnRes, isLoading, error } = useQuery({
     queryKey: ['grn', id],
-    queryFn:  () => grnApi.getById(id!),
-    enabled:  !!id,
+    queryFn: () => grnApi.getById(id!),
+    enabled: !!id,
   });
 
   // ─── Mutations ────────────────────────────────────────────────────────────
@@ -398,6 +574,22 @@ export default function GRNDetailPage() {
       toast.error(e?.response?.data?.error?.message ?? 'Delete failed'),
   });
 
+  const deleteItemMutation = useMutation({
+    mutationFn: (itemId: string) => grnApi.deleteItem(id!, itemId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['grn', id] });
+      setDeleteItemObj(null);
+      toast.success('Item deleted');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.error?.message ?? 'Delete item failed'),
+  });
+
+  const printLabelMutation = useMutation({
+    mutationFn: (itemId: string) => grnApi.generateLabels(id!, itemId),
+    onSuccess: (res) => toast.success('Label generation triggered!'),
+    onError: (e: any) => toast.error('Failed to generate label'),
+  });
+
   // ─── Guards ───────────────────────────────────────────────────────────────
   if (!id) return <div className="p-4 text-destructive">Missing GRN ID</div>;
 
@@ -417,7 +609,7 @@ export default function GRNDetailPage() {
   );
 
   const grn = grnRes.data as GRNFull;
-  const canPost    = (grn.status === 'draft' || grn.status === 'verified') && (grn.items?.length ?? 0) > 0;
+  const canPost = (grn.status === 'draft' || grn.status === 'verified') && (grn.items?.length ?? 0) > 0;
   const isEditable = grn.status === 'draft' || grn.status === 'verified';
 
   // ─── Quality status change handler ───────────────────────────────────────
@@ -427,7 +619,7 @@ export default function GRNDetailPage() {
     setQualityDialogItem({
       itemId: item.id!,
       status: newStatus,
-      notes:  item.quality_notes as string | null ?? null,
+      notes: item.quality_notes as string | null ?? null,
     });
   };
 
@@ -435,7 +627,7 @@ export default function GRNDetailPage() {
     if (!qualityDialogItem) return;
     updateQualityMutation.mutate({
       itemId: qualityDialogItem.itemId,
-      data:   { qualityStatus: pendingQualityStatus, qualityNotes: notes || null },
+      data: { qualityStatus: pendingQualityStatus, qualityNotes: notes || null },
     });
   };
 
@@ -458,7 +650,7 @@ export default function GRNDetailPage() {
         <StatusBadge status={grn.status} />
 
         {canPost && (
-          <Button size="sm" onClick={() => postMutation.mutate()} disabled={postMutation.isPending}>
+          <Button size="sm" onClick={() => setPostPreviewOpen(true)} disabled={postMutation.isPending}>
             {postMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             Post GRN (commit stock)
           </Button>
@@ -497,9 +689,9 @@ export default function GRNDetailPage() {
         <h3 className="text-sm font-semibold mb-4">Receipt Details</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <DetailField label="Receipt Date" value={fmt(grn.receipt_date ?? grn.received_date)} />
-          <DetailField label="Invoice #"    value={grn.invoice_number} />
+          <DetailField label="Invoice #" value={grn.invoice_number} />
           <DetailField label="Invoice Date" value={fmt(grn.invoice_date)} />
-          <DetailField label="Vehicle #"    value={grn.vehicle_number} />
+          <DetailField label="Vehicle #" value={grn.vehicle_number} />
           <DetailField label="Grand Total"
             value={
               <span className="text-base font-bold">
@@ -519,6 +711,7 @@ export default function GRNDetailPage() {
       {isEditable && (
         <AddItemPanel
           grnId={id}
+          existingItems={grn.items ?? []}
           onSuccess={() => {
             qc.invalidateQueries({ queryKey: ['grn', id] });
             qc.invalidateQueries({ queryKey: ['grns'] });
@@ -545,27 +738,30 @@ export default function GRNDetailPage() {
                 <th className="px-4 py-2.5">Product</th>
                 <th className="px-4 py-2.5">Shade</th>
                 {grn.purchase_order_id && <th className="px-4 py-2.5 text-right">Ordered</th>}
+                <th className="px-4 py-2.5">Rack</th>
+                <th className="px-4 py-2.5">Batch</th>
                 <th className="px-4 py-2.5 text-right">Rcvd Boxes</th>
                 <th className="px-4 py-2.5 text-right">Rcvd Pcs</th>
                 <th className="px-4 py-2.5 text-right">Damaged</th>
                 <th className="px-4 py-2.5 text-right">Unit Price</th>
                 <th className="px-4 py-2.5 text-right">Line Total</th>
                 <th className="px-4 py-2.5">Quality</th>
+                <th className="px-4 py-2.5">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {(grn.items ?? []).map((item: GRNItemFull) => {
-                const rcvdBoxes  = Number(item.received_boxes ?? 0);
+                const rcvdBoxes = Number(item.received_boxes ?? 0);
                 const rcvdPieces = Number(item.received_pieces ?? 0);
-                const damaged    = Number(item.damaged_boxes ?? 0);
-                const netBoxes   = Math.max(0, rcvdBoxes - damaged);
-                const unitPrice  = Number(item.unit_price ?? 0);
-                const lineTotal  = rcvdBoxes * unitPrice;
-                const ordered    = Number(item.ordered_boxes ?? 0);
-                const isShort    = grn.purchase_order_id && ordered > 0 && rcvdBoxes < ordered;
+                const damaged = Number(item.damaged_boxes ?? 0);
+                const netBoxes = Math.max(0, rcvdBoxes - damaged);
+                const unitPrice = Number(item.unit_price ?? 0);
+                const lineTotal = rcvdBoxes * unitPrice;
+                const ordered = Number(item.ordered_boxes ?? 0);
+                const isShort = grn.purchase_order_id && ordered > 0 && rcvdBoxes < ordered;
 
                 return (
-                  <tr key={item.id} className="hover:bg-muted/10 transition-colors">
+                  <tr key={item.id} className={cn("hover:bg-muted/10 transition-colors", damaged > 0 && "bg-destructive/5")}>
                     {/* Product */}
                     <td className="px-4 py-3">
                       <p className="font-medium">{item.product_name ?? '—'}</p>
@@ -585,6 +781,16 @@ export default function GRNDetailPage() {
                         {ordered > 0 ? ordered : '—'}
                       </td>
                     )}
+
+                    {/* Rack */}
+                    <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
+                      {item.rack_name ?? '—'}
+                    </td>
+
+                    {/* Batch */}
+                    <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
+                      {item.batch_number ?? '—'}
+                    </td>
 
                     {/* Received boxes */}
                     <td className="px-4 py-3 text-right">
@@ -650,7 +856,7 @@ export default function GRNDetailPage() {
                               setQualityDialogItem({
                                 itemId: item.id!,
                                 status: (item.quality_status as string) ?? 'pending',
-                                notes:  item.quality_notes as string | null ?? null,
+                                notes: item.quality_notes as string | null ?? null,
                               });
                             }}
                           >
@@ -661,12 +867,12 @@ export default function GRNDetailPage() {
                         <div className="flex items-center gap-1.5">
                           <Badge
                             variant={
-                              item.quality_status === 'pass'    ? 'default'     :
-                              item.quality_status === 'fail'    ? 'destructive' : 'secondary'
+                              (item as any).quality_status === 'pass' ? 'default' :
+                                (item as any).quality_status === 'fail' ? 'destructive' : 'secondary'
                             }
                             className="capitalize text-xs"
                           >
-                            {(item.quality_status as string) ?? 'pending'}
+                            {(item as any).quality_status ?? 'pending'}
                           </Badge>
                           {item.quality_notes && (
                             <span className="text-xs text-muted-foreground truncate max-w-[80px]" title={item.quality_notes as string}>
@@ -675,6 +881,32 @@ export default function GRNDetailPage() {
                           )}
                         </div>
                       )}
+                    </td>
+
+                    {/* Actions */}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center gap-1 justify-end">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary"
+                          title="Print Label"
+                          onClick={() => printLabelMutation.mutate(item.id!)}>
+                          <Printer className="h-4 w-4" />
+                        </Button>
+
+                        {isEditable && (
+                          <>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary"
+                              title="Edit Item"
+                              onClick={() => setEditItemObj(item)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive"
+                              title="Delete Item"
+                              onClick={() => setDeleteItemObj(item)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -702,12 +934,12 @@ export default function GRNDetailPage() {
             </div>
             <div className="flex justify-between text-sm text-muted-foreground">
               <span>Total Boxes</span>
-              <span>{(grn.items ?? []).reduce((s, i) => s + Number(i.received_boxes ?? 0), 0)}</span>
+              <span>{(grn.items ?? []).reduce((s, i) => s + Number((i as any).received_boxes ?? (i as any).received_qty_boxes ?? 0), 0)}</span>
             </div>
-            {(grn.items ?? []).some((i) => Number(i.damaged_boxes ?? 0) > 0) && (
+            {(grn.items ?? []).some((i) => Number((i as any).damaged_boxes ?? 0) > 0) && (
               <div className="flex justify-between text-sm text-destructive">
                 <span>Damaged Boxes</span>
-                <span>{(grn.items ?? []).reduce((s, i) => s + Number(i.damaged_boxes ?? 0), 0)}</span>
+                <span>{(grn.items ?? []).reduce((s, i) => s + Number((i as any).damaged_boxes ?? 0), 0)}</span>
               </div>
             )}
             <Separator className="my-1" />
@@ -718,6 +950,54 @@ export default function GRNDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Post Preview Dialog */}
+      <PostPreviewDialog
+        grnItems={grn.items as GRNItemFull[] ?? []}
+        open={postPreviewOpen}
+        onClose={() => setPostPreviewOpen(false)}
+        onConfirm={() => {
+          setPostPreviewOpen(false);
+          postMutation.mutate();
+        }}
+        loading={postMutation.isPending}
+      />
+
+      {/* Edit Item Dialog */}
+      <EditItemDialog
+        grnId={id}
+        warehouseId={grn.warehouse_id}
+        item={editItemObj}
+        open={!!editItemObj}
+        onClose={() => setEditItemObj(null)}
+        onSuccess={() => {
+          setEditItemObj(null);
+          qc.invalidateQueries({ queryKey: ['grn', id] });
+          qc.invalidateQueries({ queryKey: ['grns'] });
+        }}
+      />
+
+      {/* Delete Item Confirmation Dialog */}
+      <AlertDialog open={!!deleteItemObj} onOpenChange={(o) => !o && setDeleteItemObj(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Item?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {deleteItemObj?.product_name} from this GRN?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteItemMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+              onClick={() => deleteItemMutation.mutate(deleteItemObj!.id!)}
+              disabled={deleteItemMutation.isPending}
+            >
+              {deleteItemMutation.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Quality Notes Dialog */}
       <QualityNotesDialog

@@ -27,7 +27,7 @@ export const grnApi = {
   },
 
   addItem: async (id: string, data: {
-    product_id: string; shade_id?: string | null; batch_id?: string | null;
+    product_id: string; shade_id?: string | null; batch_id?: string | null; batch_number?: string | null;
     rack_id?: string | null; received_boxes: number; received_pieces?: number;
     damaged_boxes?: number; unit_price: number; quality_status?: string;
     quality_notes?: string | null;
@@ -40,6 +40,7 @@ export const grnApi = {
   updateItem: async (grnId: string, itemId: string, data: {
     received_boxes?: number; received_pieces?: number; damaged_boxes?: number;
     unit_price?: number; shade_id?: string | null; rack_id?: string | null;
+    batch_number?: string | null; batch_id?: string | null;
   }): Promise<ApiResponse<GRN>> => {
     const res = await axiosInstance.put<ApiResponse<GRN>>(`/grn/${grnId}/items/${itemId}`, data);
     return res.data;

@@ -43,18 +43,19 @@ import { cn } from '@/lib/utils';
 
 // ─── Local Types ──────────────────────────────────────────────────────────────
 interface Product { id: string; name: string; code: string }
-interface Shade   { id: string; shade_code: string; shade_name: string }
+interface Shade { id: string; shade_code: string; shade_name: string }
 
 interface GRNItemRow {
-  _key:             string;
-  product_id:       string;
-  product_label:    string;
-  shade_id:         string;
-  shade_label:      string;
-  received_boxes:   number;
-  received_pieces:  number;   // grn_items.received_pieces  NOT NULL DEFAULT 0
-  damaged_boxes:    number;   // grn_items.damaged_boxes    NOT NULL DEFAULT 0
-  unit_price:       number;   // grn_items.unit_price       NOT NULL (no default)
+  _key: string;
+  product_id: string;
+  product_label: string;
+  shade_id: string;
+  shade_label: string;
+  received_boxes: number;
+  received_pieces: number;
+  damaged_boxes: number;
+  unit_price: number;
+  ordered_boxes?: number;
 }
 
 // ─── ProductCombobox ──────────────────────────────────────────────────────────
@@ -66,8 +67,8 @@ function ProductCombobox({
   onChange: (id: string, label: string) => void;
   disabled?: boolean;
 }) {
-  const [open, setOpen]     = useState(false);
-  const [query, setQuery]   = useState('');
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
 
   const { data } = useQuery({
     queryKey: ['products-search', query],
@@ -133,18 +134,18 @@ function ShadeSelect({
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ['shades-for-product', productId],
-    queryFn:  () => productApi.getShades(productId),
-    enabled:  !!productId,
+    queryFn: () => productApi.getShades(productId),
+    enabled: !!productId,
   });
   const shades: Shade[] = data?.data ?? [];
 
   const placeholder = !productId
     ? 'Select product first'
     : isLoading
-    ? 'Loading…'
-    : shades.length === 0
-    ? 'No shades available'
-    : 'Select shade (optional)';
+      ? 'Loading…'
+      : shades.length === 0
+        ? 'No shades available'
+        : 'Select shade (optional)';
 
   return (
     <Select
@@ -245,7 +246,14 @@ function ItemsEditor({ items, onChange }: { items: GRNItemRow[]; onChange: (item
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Received Boxes <span className="text-destructive">*</span></Label>
+                <Label className="text-xs flex justify-between">
+                  <span>Received Boxes <span className="text-destructive">*</span></span>
+                  {row.ordered_boxes !== undefined && (
+                    <span className="text-[10px] text-muted-foreground mr-1">
+                      Ordered: {row.ordered_boxes}
+                    </span>
+                  )}
+                </Label>
                 <Input
                   type="number" min={0} step="0.01" className="h-9"
                   value={row.received_boxes}
@@ -306,15 +314,15 @@ function CreateGRNDialog({
   onSubmit: (p: Record<string, unknown>) => Promise<void>;
   loading: boolean; preselectedPoId?: string | null;
 }) {
-  const [po_id,          setPoId]          = useState('');
-  const [vendor_id,      setVendorId]      = useState('');
-  const [warehouse_id,   setWarehouseId]   = useState('');
-  const [receipt_date,   setReceiptDate]   = useState('');
+  const [po_id, setPoId] = useState('');
+  const [vendor_id, setVendorId] = useState('');
+  const [warehouse_id, setWarehouseId] = useState('');
+  const [receipt_date, setReceiptDate] = useState('');
   const [invoice_number, setInvoiceNumber] = useState('');
-  const [invoice_date,   setInvoiceDate]   = useState('');
+  const [invoice_date, setInvoiceDate] = useState('');
   const [vehicle_number, setVehicleNumber] = useState('');
-  const [notes,          setNotes]         = useState('');
-  const [items,          setItems]         = useState<GRNItemRow[]>([]);
+  const [notes, setNotes] = useState('');
+  const [items, setItems] = useState<GRNItemRow[]>([]);
 
   const { data: posData } = useQuery({
     queryKey: ['pos-for-grn'],
@@ -324,16 +332,24 @@ function CreateGRNDialog({
   });
   const availablePOs = posData ?? [];
 
+  const { data: poDetails } = useQuery({
+    queryKey: ['po-details', po_id],
+    queryFn: () => purchaseOrderApi.getById(po_id),
+    enabled: !!po_id,
+  });
+
   const { data: vData } = useQuery({ queryKey: ['vendors', 500], queryFn: () => vendorApi.getAll({ limit: 500 }), enabled: open });
   const { data: wData } = useQuery({ queryKey: ['warehouses', 500], queryFn: () => warehouseApi.getAll({ limit: 500 }), enabled: open });
-  const vendors    = vData?.data ?? [];
+  const vendors = vData?.data ?? [];
   const warehouses = wData?.data ?? [];
 
   useEffect(() => {
     if (!open) return;
     setPoId(preselectedPoId ?? '');
     setReceiptDate(new Date().toISOString().slice(0, 10));
-    setInvoiceNumber(''); setInvoiceDate(''); setVehicleNumber(''); setNotes('');
+    setInvoiceNumber(`INV-${Date.now().toString().slice(-6)}`);
+    setInvoiceDate(new Date().toISOString().slice(0, 10));
+    setVehicleNumber(''); setNotes('');
     setVendorId(''); setWarehouseId('');
     setItems([{ _key: crypto.randomUUID(), product_id: '', product_label: '', shade_id: '', shade_label: '', received_boxes: 0, received_pieces: 0, damaged_boxes: 0, unit_price: 0 }]);
   }, [open, preselectedPoId]);
@@ -345,6 +361,36 @@ function CreateGRNDialog({
     if (po) { setVendorId(po.vendor_id ?? ''); setWarehouseId(po.warehouse_id ?? ''); }
   }, [po_id, availablePOs]);
 
+  // Auto-fill items from selected PO
+  useEffect(() => {
+    if (!po_id) {
+      if (items.some((it) => it.ordered_boxes !== undefined)) {
+        setItems([{ _key: crypto.randomUUID(), product_id: '', product_label: '', shade_id: '', shade_label: '', received_boxes: 0, received_pieces: 0, damaged_boxes: 0, unit_price: 0 }]);
+      }
+      return;
+    }
+    if (poDetails?.data?.items) {
+      const newItems = poDetails.data.items.map((item: any) => {
+        const remaining = Math.max(0, (item.ordered_boxes || 0) - (item.received_boxes || 0));
+        return {
+          _key: crypto.randomUUID(),
+          product_id: item.product_id,
+          product_label: item.product_name || item.product_code || '',
+          shade_id: item.shade_id || '',
+          shade_label: item.shade_name || item.shade_code || '',
+          received_boxes: remaining,
+          received_pieces: 0,
+          damaged_boxes: 0,
+          unit_price: item.unit_price || 0,
+          ordered_boxes: item.ordered_boxes,
+        };
+      });
+      if (newItems.length > 0) {
+        setItems(newItems);
+      }
+    }
+  }, [po_id, poDetails?.data]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!vendor_id || !warehouse_id || !receipt_date) {
@@ -355,24 +401,44 @@ function CreateGRNDialog({
       toast.error('Each item needs a product and received boxes > 0.');
       return;
     }
+    const productIds = new Set();
+    for (const it of items) {
+      if (!it.product_id) continue;
+      if (productIds.has(it.product_id)) {
+        toast.error("This product has already been added to the GRN");
+        return;
+      }
+      productIds.add(it.product_id);
+    }
+
     if (items.some((it) => it.damaged_boxes > it.received_boxes)) {
-      toast.error('Damaged boxes cannot exceed received boxes.');
+      toast.error("Damaged boxes cannot exceed received boxes");
       return;
+    }
+
+    if (po_id && poDetails?.data?.items) {
+      const hasWarning = items.some(it => {
+        const poItem = poDetails.data.items.find((pi: any) => pi.product_id === it.product_id);
+        return poItem && it.received_boxes > poItem.ordered_boxes;
+      });
+      if (hasWarning) {
+        toast.warning("Received boxes exceed ordered quantity for some products in the PO");
+      }
     }
     await onSubmit({
       purchase_order_id: po_id || undefined,
       vendor_id, warehouse_id, receipt_date,
       invoice_number: invoice_number || undefined,
-      invoice_date:   invoice_date   || undefined,
+      invoice_date: invoice_date || undefined,
       vehicle_number: vehicle_number || undefined,
-      notes:          notes          || undefined,
+      notes: notes || undefined,
       items: items.map((it) => ({
-        product_id:      it.product_id,
-        shade_id:        it.shade_id        || undefined,
-        received_boxes:  it.received_boxes,
+        product_id: it.product_id,
+        shade_id: it.shade_id || undefined,
+        received_boxes: it.received_boxes,
         received_pieces: it.received_pieces,
-        damaged_boxes:   it.damaged_boxes,
-        unit_price:      it.unit_price,
+        damaged_boxes: it.damaged_boxes,
+        unit_price: it.unit_price,
       })),
     });
   };
@@ -475,6 +541,22 @@ function CreateGRNDialog({
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes…" rows={2} />
           </div>
 
+          <div className="rounded-lg border bg-muted/30 p-4 space-y-2 mt-4">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Total Items</span>
+              <span className="font-semibold">{items.filter(it => it.product_id).length}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Total Boxes</span>
+              <span className="font-semibold">{items.reduce((sum, it) => sum + (it.received_boxes || 0), 0)}</span>
+            </div>
+            <Separator />
+            <div className="flex justify-between text-sm">
+              <span className="font-bold">Grand Total</span>
+              <span className="font-bold">₹{items.reduce((sum, it) => sum + ((it.received_boxes || 0) * (it.unit_price || 0)), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            </div>
+          </div>
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
             <Button type="submit" disabled={loading}>{loading ? 'Creating…' : 'Create GRN'}</Button>
@@ -493,11 +575,11 @@ function EditGRNDialog({
   onSubmit: (id: string, d: Record<string, unknown>) => Promise<void>;
   loading: boolean;
 }) {
-  const [receipt_date,   setReceiptDate]   = useState('');
+  const [receipt_date, setReceiptDate] = useState('');
   const [invoice_number, setInvoiceNumber] = useState('');
-  const [invoice_date,   setInvoiceDate]   = useState('');
+  const [invoice_date, setInvoiceDate] = useState('');
   const [vehicle_number, setVehicleNumber] = useState('');
-  const [notes,          setNotes]         = useState('');
+  const [notes, setNotes] = useState('');
 
   useEffect(() => {
     if (!grn || !open) return;
@@ -514,11 +596,11 @@ function EditGRNDialog({
     e.preventDefault();
     if (!grn) return;
     await onSubmit(grn.id, {
-      receipt_date:   receipt_date   || undefined,
+      receipt_date: receipt_date || undefined,
       invoice_number: invoice_number || undefined,
-      invoice_date:   invoice_date   || undefined,
+      invoice_date: invoice_date || undefined,
       vehicle_number: vehicle_number || undefined,
-      notes:          notes          || undefined,
+      notes: notes || undefined,
     });
   };
 
@@ -581,9 +663,9 @@ function GRNDetailSheet({ id, open, onClose }: { id: string | null; open: boolea
 
   const { data, isLoading } = useQuery({
     queryKey: ['grn-detail', id],
-    queryFn:  () => grnApi.getById(id!),
-    enabled:  !!id && open,
-    select:   (d) => d.data,
+    queryFn: () => grnApi.getById(id!),
+    enabled: !!id && open,
+    select: (d) => d.data,
   });
   const grn = data as (GRN & { items?: Array<Record<string, unknown>>; vehicle_number?: string }) | undefined;
 
@@ -604,14 +686,14 @@ function GRNDetailSheet({ id, open, onClose }: { id: string | null; open: boolea
             {/* Header grid */}
             <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
               {([
-                ['Vendor',       grn.vendor_name],
-                ['Warehouse',    grn.warehouse_name],
-                ['PO #',         grn.po_number ?? '—'],
+                ['Vendor', grn.vendor_name],
+                ['Warehouse', grn.warehouse_name],
+                ['PO #', grn.po_number ?? '—'],
                 ['Receipt Date', grn.receipt_date ? new Date(String(grn.receipt_date)).toLocaleDateString('en-IN') : '—'],
-                ['Invoice #',    grn.invoice_number ?? '—'],
-                ['Invoice Date', grn.invoice_date   ? new Date(String(grn.invoice_date)).toLocaleDateString('en-IN') : '—'],
-                ['Vehicle #',    grn.vehicle_number ?? '—'],
-                ['Grand Total',  grn.grand_total != null ? `₹${Number(grn.grand_total).toLocaleString('en-IN')}` : '—'],
+                ['Invoice #', grn.invoice_number ?? '—'],
+                ['Invoice Date', grn.invoice_date ? new Date(String(grn.invoice_date)).toLocaleDateString('en-IN') : '—'],
+                ['Vehicle #', grn.vehicle_number ?? '—'],
+                ['Grand Total', grn.grand_total != null ? `₹${Number(grn.grand_total).toLocaleString('en-IN')}` : '—'],
               ] as [string, string | null | undefined][]).map(([k, v]) => (
                 <div key={k}>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{k}</p>
@@ -649,8 +731,8 @@ function GRNDetailSheet({ id, open, onClose }: { id: string | null; open: boolea
                         </div>
                         <Badge
                           variant={
-                            item.quality_status === 'pass'    ? 'default'     :
-                            item.quality_status === 'fail'    ? 'destructive' : 'secondary'
+                            item.quality_status === 'pass' ? 'default' :
+                              item.quality_status === 'fail' ? 'destructive' : 'secondary'
                           }
                           className="ml-2 shrink-0"
                         >
@@ -726,13 +808,13 @@ export default function GRNPage() {
   const preselectedPoId = searchParams.get('po_id');
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [editGRN,    setEditGRN]    = useState<GRN | null>(null);
-  const [deleteGRN,  setDeleteGRN]  = useState<GRN | null>(null);
-  const [viewId,     setViewId]     = useState<string | null>(null);
+  const [editGRN, setEditGRN] = useState<GRN | null>(null);
+  const [deleteGRN, setDeleteGRN] = useState<GRN | null>(null);
+  const [viewId, setViewId] = useState<string | null>(null);
 
-  const [page,        setPage]        = useState(1);
+  const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
-  const [search,      setSearch]      = useState('');
+  const [search, setSearch] = useState('');
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = useCallback((value: string) => {
@@ -745,31 +827,31 @@ export default function GRNPage() {
 
   const listParams = {
     page, limit: 25,
-    search:    search.trim() || undefined,
-    sortBy:    'created_at',
+    search: search.trim() || undefined,
+    sortBy: 'created_at',
     sortOrder: 'DESC' as const,
   };
 
   const { data, isLoading } = useQuery({
     queryKey: ['grns', listParams],
-    queryFn:  () => grnApi.getAll(listParams),
+    queryFn: () => grnApi.getAll(listParams),
   });
   const grns: GRN[] = data?.data ?? [];
-  const meta        = data?.meta  ?? null;
+  const meta = data?.meta ?? null;
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
   const createMutation = useMutation({
     mutationFn: (fd: Record<string, unknown>) =>
       grnApi.create({
         purchaseOrderId: fd.purchase_order_id ? String(fd.purchase_order_id) : undefined,
-        vendorId:        String(fd.vendor_id),
-        warehouseId:     String(fd.warehouse_id),
-        receiptDate:     String(fd.receipt_date),
-        invoiceNumber:   fd.invoice_number ? String(fd.invoice_number) : undefined,
-        invoiceDate:     fd.invoice_date   ? String(fd.invoice_date)   : undefined,
-        vehicleNumber:   fd.vehicle_number ? String(fd.vehicle_number) : undefined,
-        notes:           fd.notes          ? String(fd.notes)          : undefined,
-        items:           fd.items as Parameters<typeof grnApi.create>[0]['items'],
+        vendorId: String(fd.vendor_id),
+        warehouseId: String(fd.warehouse_id),
+        receiptDate: String(fd.receipt_date),
+        invoiceNumber: fd.invoice_number ? String(fd.invoice_number) : undefined,
+        invoiceDate: fd.invoice_date ? String(fd.invoice_date) : undefined,
+        vehicleNumber: fd.vehicle_number ? String(fd.vehicle_number) : undefined,
+        notes: fd.notes ? String(fd.notes) : undefined,
+        items: fd.items as Parameters<typeof grnApi.create>[0]['items'],
       }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['grns'] });
@@ -825,15 +907,15 @@ export default function GRNPage() {
       render: (r: GRN) =>
         r.po_number
           ? <button type="button"
-              className="font-mono text-xs text-blue-600 hover:underline whitespace-nowrap"
-              onClick={() => navigate(`/purchase/orders/${r.purchase_order_id}`)}>
-              {r.po_number}
-            </button>
+            className="font-mono text-xs text-blue-600 hover:underline whitespace-nowrap"
+            onClick={() => navigate(`/purchase/orders/${r.purchase_order_id}`)}>
+            {r.po_number}
+          </button>
           : <span className="text-muted-foreground text-xs">—</span>,
     },
-    { key: 'vendor_name',    label: 'Vendor',    render: (r: GRN) => <span className="text-sm">{r.vendor_name    ?? '—'}</span> },
+    { key: 'vendor_name', label: 'Vendor', render: (r: GRN) => <span className="text-sm">{r.vendor_name ?? '—'}</span> },
     { key: 'warehouse_name', label: 'Warehouse', render: (r: GRN) => <span className="text-sm">{r.warehouse_name ?? '—'}</span> },
-    { key: 'status',         label: 'Status',    render: (r: GRN) => <StatusBadge status={r.status} /> },
+    { key: 'status', label: 'Status', render: (r: GRN) => <StatusBadge status={r.status} /> },
     {
       key: 'receipt_date',
       label: 'Receipt Date',

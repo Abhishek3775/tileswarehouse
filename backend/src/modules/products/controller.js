@@ -14,8 +14,16 @@ const getById = async (req, res) => {
   return success(res, product, 'Product fetched');
 };
 
+const getShades = async (req, res) => {
+  const shades = await service.getShades(req.params.id, req.tenantId);
+  // If the frontend expects `res.data` to be an array directly from `getShades`, `success()` wraps it in `{ success: true, data: [...] }`.
+  // Wait, frontend actually uses `res.data` directly and `api.get` typically extracts `res.data.data` or just returns `res.data` depending on the interceptor.
+  // The frontend calls `axiosInstance.get`. Usually `success(res, array)` will return `{ success: true, data: array }`.
+  return success(res, shades, 'Shades fetched');
+};
+
 const create = async (req, res) => {
-    if (req.file) {
+  if (req.file) {
     req.body.imageUrl = `/uploads/${req.file.filename}`;
   }
   const product = await service.create(req.tenantId, req.body);
@@ -50,4 +58,4 @@ const remove = async (req, res) => {
   return success(res, {}, 'Product deactivated');
 };
 
-module.exports = { getAll, getById, create, update, remove };
+module.exports = { getAll, getById, getShades, create, update, remove };

@@ -18,7 +18,7 @@ const validate = (schema) => (req, res, next) => {
     return res.status(422).json({
       success: false,
       error: {
-        code:    'VALIDATION_ERROR',
+        code: 'VALIDATION_ERROR',
         message: error.details[0].message,
         details: error.details.map((d) => ({ field: d.path.join('.'), message: d.message })),
       },
@@ -36,7 +36,7 @@ const getAll = async (req, res, next) => {
     if (error) {
       return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: error.details[0].message } });
     }
-    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 25));
     const { rows, total } = await service.getAll(req.tenantId, req.query);
     return paginated(res, rows, { page, limit, total });
@@ -109,6 +109,36 @@ const addItem = async (req, res, next) => {
   }
 };
 
+// ─── UPDATE ITEM ──────────────────────────────────────────────────────────────
+const updateItem = async (req, res, next) => {
+  try {
+    const grn = await service.updateItem(req.params.id, req.tenantId, req.params.itemId, req.body);
+    return success(res, grn, 'GRN item updated');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── DELETE ITEM ──────────────────────────────────────────────────────────────
+const deleteItem = async (req, res, next) => {
+  try {
+    const grn = await service.deleteItem(req.params.id, req.tenantId, req.params.itemId);
+    return success(res, grn, 'GRN item deleted');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── GENERATE LABELS ──────────────────────────────────────────────────────────
+const generateLabels = async (req, res, next) => {
+  try {
+    const labels = await service.generateLabels(req.params.id, req.tenantId, req.params.itemId);
+    return success(res, labels, 'Labels generated successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ─── REMOVE ───────────────────────────────────────────────────────────────────
 const remove = async (req, res, next) => {
   try {
@@ -125,6 +155,9 @@ module.exports = {
   create,
   update,
   addItem,
+  updateItem,
+  deleteItem,
+  generateLabels,
   remove,
   postGRN,
   updateQuality,

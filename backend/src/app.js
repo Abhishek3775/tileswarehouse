@@ -16,7 +16,11 @@ const warehouseRoutes = require('./modules/warehouses/warehouse.routes');
 const rackRoutes = require('./modules/racks/rack.routes');
 const stockTransferRoutes = require('./modules/stock-transfers/transfer.routes');
 
+
+
+
 // ─── Route Imports ────────────────────────────────────────────────────────────
+const alertsRoutes = require('./modules/alerts/routes');
 const authRoutes = require('./modules/auth/routes');
 const productRoutes = require('./modules/products/routes');
 const grnRoutes = require('./modules/grn/routes');
@@ -180,7 +184,7 @@ app.use(`${API}/delivery-challans`, deliveryChallansRoutes);
 app.use(`${API}/sales-returns`, salesReturnsRoutes);
 app.use(`${API}/users`, usersRoutes);
 app.use(`${API}/setup/gst`, gstConfigRoutes);
-
+app.use(`${API}/alerts`, alertsRoutes);
 // Full CRUD modules (GET, POST, PUT, DELETE) — Vendors uses full module (pagination, search, soft delete)
 app.use(`${API}/vendors`, vendorRoutes);
 app.use(`${API}/customers`, customerRoutes);

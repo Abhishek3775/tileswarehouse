@@ -272,6 +272,18 @@ CREATE TABLE IF NOT EXISTS products (
   CONSTRAINT fk_product_category FOREIGN KEY (category_id) REFERENCES product_categories(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS low_stock_alerts (
+ id VARCHAR(36) PRIMARY KEY,
+ tenant_id VARCHAR(36),
+ product_id VARCHAR(36),
+ warehouse_id VARCHAR(36),
+ current_stock_boxes DECIMAL(10,2),
+ reorder_level_boxes DECIMAL(10,2),
+ status ENUM('open','acknowledged','resolved') DEFAULT 'open',
+ alerted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ resolved_at DATETIME NULL
+);
+
 -- ─── SHADES ───────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS shades (
   id         VARCHAR(36)  NOT NULL,

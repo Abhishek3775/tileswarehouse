@@ -7,7 +7,7 @@ const findAll = async (tenantId, queryParams) => {
   const { clause: searchClause, params: searchParams } = buildSearchClause(search, ['p.name', 'p.code', 'p.brand']);
   const { clauses: filterClauses, params: filterParams } = buildFilterClauses({
     'p.category_id': queryParams.categoryId,
-    'p.is_active':   queryParams.isActive !== undefined ? queryParams.isActive : undefined,
+    'p.is_active': queryParams.isActive !== undefined ? queryParams.isActive : undefined,
   });
 
   const conditions = [`p.tenant_id = ?`];
@@ -41,6 +41,14 @@ const findById = async (id, tenantId) => {
   return rows[0] || null;
 };
 
+const findShades = async (productId, tenantId) => {
+  const rows = await query(
+    `SELECT * FROM shades WHERE product_id = ? AND tenant_id = ? AND is_active = 1`,
+    [productId, tenantId]
+  );
+  return rows;
+};
+
 const create = async (data) => {
   const { v4: uuidv4 } = require('uuid');
   const id = uuidv4();
@@ -53,11 +61,11 @@ const create = async (data) => {
         reorder_level_boxes, barcode, image_url, is_active, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, NOW(), NOW())`,
     [id, data.tenantId, data.categoryId || null, data.name, data.code, data.description || null,
-     data.sizeLengthMm, data.sizeWidthMm, data.sizeThicknessMm || null, data.sizeLabel,
-     data.piecesPerBox, data.sqftPerBox, data.sqmtPerBox || null, data.weightPerBoxKg || null,
-     data.finish || null, data.material || null, data.brand || null, data.hsnCode || null,
-     data.gstRate || 18.00, data.mrp || null, data.reorderLevelBoxes || 0,
-     data.barcode || null, data.imageUrl || null]
+      data.sizeLengthMm, data.sizeWidthMm, data.sizeThicknessMm || null, data.sizeLabel,
+      data.piecesPerBox, data.sqftPerBox, data.sqmtPerBox || null, data.weightPerBoxKg || null,
+      data.finish || null, data.material || null, data.brand || null, data.hsnCode || null,
+      data.gstRate || 18.00, data.mrp || null, data.reorderLevelBoxes || 0,
+      data.barcode || null, data.imageUrl || null]
   );
   return findById(id, data.tenantId);
 };
@@ -117,4 +125,4 @@ const findByCode = async (code, tenantId, excludeId = null) => {
   return rows[0] || null;
 };
 
-module.exports = { findAll, findById, create, update, softDelete, findByCode };
+module.exports = { findAll, findById, findShades, create, update, softDelete, findByCode };

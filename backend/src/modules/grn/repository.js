@@ -19,9 +19,9 @@ const findAll = async (tenantId, queryParams) => {
   const conditions = ['g.tenant_id = ?'];
   const params = [tenantId];
 
-  if (queryParams.status)            { conditions.push('g.status = ?');            params.push(queryParams.status); }
-  if (queryParams.vendorId)          { conditions.push('g.vendor_id = ?');         params.push(queryParams.vendorId); }
-  if (queryParams.warehouseId)       { conditions.push('g.warehouse_id = ?');      params.push(queryParams.warehouseId); }
+  if (queryParams.status) { conditions.push('g.status = ?'); params.push(queryParams.status); }
+  if (queryParams.vendorId) { conditions.push('g.vendor_id = ?'); params.push(queryParams.vendorId); }
+  if (queryParams.warehouseId) { conditions.push('g.warehouse_id = ?'); params.push(queryParams.warehouseId); }
   if (queryParams.purchase_order_id) { conditions.push('g.purchase_order_id = ?'); params.push(queryParams.purchase_order_id); }
   if (search) {
     conditions.push('(g.grn_number LIKE ? OR v.name LIKE ?)');
@@ -73,7 +73,7 @@ const findById = async (id, tenantId) => {
     `SELECT gi.*,
             p.name AS product_name, p.code AS product_code, p.sqft_per_box,
             s.shade_code, s.shade_name,
-            b.batch_number,
+            COALESCE(gi.batch_number, b.batch_number) AS batch_number,
             r.name AS rack_name,
             poi.ordered_boxes AS ordered_boxes
      FROM grn_items gi
@@ -120,9 +120,9 @@ const createGRN = async (trx, {
       vendorId, warehouseId,
       receiptDate || new Date(),
       invoiceNumber || null,
-      invoiceDate   || null,
+      invoiceDate || null,
       vehicleNumber || null,
-      notes         || null,
+      notes || null,
       createdBy,
     ]
   );
@@ -131,28 +131,29 @@ const createGRN = async (trx, {
 
 // ─── CREATE GRN ITEM ─────────────────────────────────────────────────────────
 const createGRNItem = async (trx, {
-  tenantId, grnId, product_id, shade_id, batch_id, rack_id,
+  tenantId, grnId, product_id, shade_id, batch_id, batch_number, rack_id,
   received_boxes, received_pieces, damaged_boxes, unit_price,
   quality_status, quality_notes
 }) => {
   const id = uuidv4();
   await trx.query(
     `INSERT INTO grn_items
-       (id, tenant_id, grn_id, product_id, shade_id, batch_id, rack_id,
+       (id, tenant_id, grn_id, product_id, shade_id, batch_id, batch_number, rack_id,
         received_boxes, received_pieces, damaged_boxes, unit_price,
         quality_status, quality_notes, barcode_printed)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
     [
       id, tenantId, grnId, product_id,
-      shade_id  || null,
-      batch_id  || null,
-      rack_id   || null,
+      shade_id || null,
+      batch_id || null,
+      batch_number || null,
+      rack_id || null,
       received_boxes,
       received_pieces || 0,
-      damaged_boxes   || 0,
-      unit_price      || 0,
-      quality_status  || 'pending',
-      quality_notes   || null,
+      damaged_boxes || 0,
+      unit_price || 0,
+      quality_status || 'pending',
+      quality_notes || null,
     ]
   );
   return id;
@@ -170,7 +171,7 @@ const updateStatus = async (trx, id, tenantId, status) => {
 const updateGRN = async (id, tenantId, data) => {
   const allowed = ['receipt_date', 'invoice_number', 'invoice_date', 'vehicle_number', 'notes', 'vendor_id', 'warehouse_id'];
   const updates = [];
-  const params  = [];
+  const params = [];
   for (const key of allowed) {
     if (data[key] !== undefined) {
       updates.push(`${key} = ?`);
@@ -200,31 +201,65 @@ const recalcGrandTotal = async (grnId, tenantId, trxOrQuery) => {
 
 // ─── ADD GRN ITEM ─────────────────────────────────────────────────────────────
 const addGRNItem = async (tenantId, grnId, item) => {
-  const id             = uuidv4();
-  const receivedBoxes  = parseFloat(item.received_boxes)  || 0;
+  const id = uuidv4();
+  const receivedBoxes = parseFloat(item.received_boxes) || 0;
   const receivedPieces = parseFloat(item.received_pieces) || 0;
-  const damagedBoxes   = parseFloat(item.damaged_boxes)   || 0;
-  const unitPrice      = parseFloat(item.unit_price)      || 0;
+  const damagedBoxes = parseFloat(item.damaged_boxes) || 0;
+  const unitPrice = parseFloat(item.unit_price) || 0;
 
   await query(
     `INSERT INTO grn_items
-       (id, tenant_id, grn_id, product_id, shade_id, batch_id, rack_id,
+       (id, tenant_id, grn_id, product_id, shade_id, batch_id, batch_number, rack_id,
         received_boxes, received_pieces, damaged_boxes, unit_price,
         quality_status, quality_notes, barcode_printed)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
     [
       id, tenantId, grnId,
       item.product_id,
       item.shade_id || null,
       item.batch_id || null,
-      item.rack_id  || null,
+      item.batch_number || null,
+      item.rack_id || null,
       receivedBoxes, receivedPieces, damagedBoxes, unitPrice,
       item.quality_status || 'pending',
-      item.quality_notes  || null,
+      item.quality_notes || null,
     ]
   );
   await recalcGrandTotal(grnId, tenantId, null);
   return id;
+};
+
+// ─── UPDATE GRN ITEM ──────────────────────────────────────────────────────────
+const updateGRNItem = async (tenantId, grnId, itemId, data) => {
+  const allowed = [
+    'product_id', 'shade_id', 'batch_id', 'batch_number', 'rack_id',
+    'received_boxes', 'received_pieces', 'damaged_boxes', 'unit_price',
+    'quality_status', 'quality_notes'
+  ];
+  const updates = [];
+  const params = [];
+  for (const key of allowed) {
+    if (data[key] !== undefined) {
+      updates.push(`${key} = ?`);
+      params.push(data[key]);
+    }
+  }
+  if (updates.length > 0) {
+    params.push(itemId, grnId, tenantId);
+    await query(`UPDATE grn_items SET ${updates.join(', ')} WHERE id = ? AND grn_id = ? AND tenant_id = ?`, params);
+    await recalcGrandTotal(grnId, tenantId, null);
+  }
+};
+
+// ─── REMOVE GRN ITEM ──────────────────────────────────────────────────────────
+const removeGRNItem = async (tenantId, grnId, itemId) => {
+  await query(`DELETE FROM grn_items WHERE id = ? AND grn_id = ? AND tenant_id = ?`, [itemId, grnId, tenantId]);
+  await recalcGrandTotal(grnId, tenantId, null);
+};
+
+// ─── MARK BARCODE PRINTED ─────────────────────────────────────────────────────
+const markBarcodePrinted = async (tenantId, grnId, itemId) => {
+  await query(`UPDATE grn_items SET barcode_printed = TRUE WHERE id = ? AND grn_id = ? AND tenant_id = ?`, [itemId, grnId, tenantId]);
 };
 
 // ─── DELETE GRN ──────────────────────────────────────────────────────────────
@@ -287,6 +322,9 @@ module.exports = {
   updateStatus,
   updateGRN,
   addGRNItem,
+  updateGRNItem,
+  removeGRNItem,
+  markBarcodePrinted,
   deleteGRN,
   updatePOReceivedBoxes,
   recalcGrandTotal,
